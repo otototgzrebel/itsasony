@@ -141,11 +141,15 @@ class Renderer:
         level_text = self.font.render(f"Level: {game_logic.level}", True, BLACK)
         self.screen.blit(level_text, (10, 50))
         
+        # BGM操作説明
+        bgm_text = self.font.render("Press M to toggle BGM", True, BLACK)
+        self.screen.blit(bgm_text, (10, 90))
+        
         # ゲーム結果表示
         if game_logic.game_clear:
             text = self.big_font.render("CLEAR!", True, GREEN)
             self.screen.blit(text, (400-100, 300-36))
-            restart_text = self.font.render("Press R to Restart", True, BLACK)
+            restart_text = self.font.render("Press SPACE for Next Level", True, BLACK)
             self.screen.blit(restart_text, (400-150, 300+50))
         elif game_logic.game_over:
             text = self.big_font.render("GAME OVER", True, RED)

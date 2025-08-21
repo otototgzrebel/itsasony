@@ -53,10 +53,110 @@ def create_detection_sound():
     return sound
 
 
+def create_bgm():
+    duration = 6.0  # ゆったりとした童話風のテンポ
+    sample_rate = 22050
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+
+    # 童話風のメロディー（Fメジャー、優しい進行）
+    # "きらきら星"や"メリーさんの羊"のような親しみやすい音程
+    melody_freq = [349, 392, 440, 392, 349, 293, 349, 392, 440, 523, 440, 392]  # F-G-A-G-F-D-F-G-A-C-A-G
+    note_duration = duration / len(melody_freq)
+    melody = np.zeros_like(t)
+
+    for i, freq in enumerate(melody_freq):
+        start_idx = int(i * note_duration * sample_rate)
+        end_idx = int((i + 1) * note_duration * sample_rate)
+        if end_idx > len(t): end_idx = len(t)
+        note_t = t[start_idx:end_idx] - t[start_idx]
+
+        # 童話らしい柔らかなエンベロープ（ゆっくりとしたアタックとリリース）
+        envelope = (1 - np.exp(-note_t * 5)) * np.exp(-note_t * 1.2)
+
+        # オルゴール風の純粋なサイン波に少し倍音を加える
+        wave = (np.sin(freq * 2 * np.pi * note_t) * 0.8 +
+                np.sin(freq * 4 * np.pi * note_t) * 0.15 +
+                np.sin(freq * 6 * np.pi * note_t) * 0.05)
+
+        melody[start_idx:end_idx] = wave * envelope * 0.08
+
+    # 優しいベースライン（童話の伴奏らしく単純で安定）
+    bass_freq = [174, 220, 174, 220, 146, 196, 174, 220, 174, 261, 220, 196]  # F-A-F-A-D-G-F-A-F-C-A-G (1オクターブ下)
+    bass = np.zeros_like(t)
+
+    for i, freq in enumerate(bass_freq):
+        start_idx = int(i * note_duration * sample_rate)
+        end_idx = int((i + 1) * note_duration * sample_rate)
+        if end_idx > len(t): end_idx = len(t)
+        note_t = t[start_idx:end_idx] - t[start_idx]
+
+        # ゆったりとしたベース
+        envelope = (1 - np.exp(-note_t * 3)) * np.exp(-note_t * 0.8)
+        wave = np.sin(freq * 2 * np.pi * note_t)
+        bass[start_idx:end_idx] = wave * envelope * 0.05
+
+    # 魔法のようなキラキラ音（高音域でスパークル効果）
+    sparkle_freq = [1047, 1175, 1319, 1175, 1047, 880, 1047, 1175, 1319, 1568, 1319, 1175]  # 高音域のキラキラ
+    sparkle = np.zeros_like(t)
+
+    for i, freq in enumerate(sparkle_freq):
+        start_idx = int(i * note_duration * sample_rate)
+        end_idx = int((i + 1) * note_duration * sample_rate)
+        if end_idx > len(t): end_idx = len(t)
+        note_t = t[start_idx:end_idx] - t[start_idx]
+
+        # キラキラ効果（短いアタック、長いリリース）
+        envelope = np.exp(-note_t * 0.8) * (1 - np.exp(-note_t * 12))
+        # 三角波風でより柔らかく
+        wave = np.sin(freq * 2 * np.pi * note_t) * (1 - 2 * np.abs(np.sin(freq * np.pi * note_t)))
+        sparkle[start_idx:end_idx] = wave * envelope * 0.03
+
+    # 温かいパッド（童話の背景音）
+    pad_freq = [349, 392, 440, 392, 349, 293, 349, 392, 440, 523, 440, 392]  # メロディと同じ音程
+    pad = np.zeros_like(t)
+
+    for i, freq in enumerate(pad_freq):
+        start_idx = int(i * note_duration * sample_rate)
+        end_idx = int((i + 1) * note_duration * sample_rate)
+        if end_idx > len(t): end_idx = len(t)
+        note_t = t[start_idx:end_idx] - t[start_idx]
+
+        # 非常にゆっくりとしたエンベロープで背景を作る
+        envelope = (1 - np.exp(-note_t * 2)) * np.exp(-note_t * 0.4)
+        # 複数のサイン波を重ねて温かみを演出
+        wave = (np.sin(freq * 2 * np.pi * note_t) * 0.4 +
+                np.sin(freq * 2 * np.pi * note_t + np.pi/4) * 0.3 +
+                np.sin(freq * 2 * np.pi * note_t + np.pi/2) * 0.3)
+        pad[start_idx:end_idx] = wave * envelope * 0.04
+
+    # ミックス
+    bgm_wave = melody + bass + sparkle + pad
+
+    # 童話らしい長めのフェードイン・アウト
+    fade_samples = int(0.5 * sample_rate)
+    bgm_wave[:fade_samples] *= np.linspace(0, 1, fade_samples)
+    bgm_wave[-fade_samples:] *= np.linspace(1, 0, fade_samples)
+
+    # 軽いコンプレッション（童話らしく優しく）
+    bgm_wave = np.tanh(bgm_wave * 1.1) * 0.7
+
+    # ステレオ化（左右で少し位相をずらして広がりを演出）
+    left_channel = bgm_wave
+    right_channel = bgm_wave * 0.95  # 右チャンネルを少し小さく
+    stereo_wave = np.column_stack((left_channel, right_channel))
+
+    # Pygameサウンドオブジェクトに変換
+    sound = pygame.sndarray.make_sound((stereo_wave * 32767).astype(np.int16))
+    return sound
+
 footstep_sound = create_footstep_sound()
 timer_sound = create_timer_sound()
 explosion_sound = create_explosion_sound()
 detection_sound = create_detection_sound()
+bgm_sound = create_bgm()
+
+# BGM状態管理 (0: BGM2, 1: 無音)
+bgm_state = 0
 
 # 画面設定
 WIDTH, HEIGHT = 800, 600
@@ -68,6 +168,9 @@ clock = pygame.time.Clock()
 game = GameLogic()
 renderer = Renderer(screen)
 
+# BGM開始 (初期状態はBGM2)
+bgm_sound.play(-1)  # 無限ループ再生
+
 # ゲームループ
 running = True
 while running:
@@ -78,12 +181,16 @@ while running:
             if event.key == pygame.K_r and game.game_over:
                 game.restart()
             elif event.key == pygame.K_SPACE and game.game_clear:
-                game.game_clear = False
+                game.next_level()
+            elif event.key == pygame.K_m:
+                # BGM 2状態切り替え (BGM2 → 無音 → BGM2)
+                pygame.mixer.stop()
+                bgm_state = (bgm_state + 1) % 2
+                if bgm_state == 0:
+                    bgm_sound.play(-1)  # BGM2再生
+                # bgm_state == 1 の場合は無音（何も再生しない）
 
-    # ゲームクリア時の自動進行
-    if game.game_clear:
-        pygame.time.wait(2000)
-        game.game_clear = False
+    # ゲームクリア時の処理は手動で行う（スペースキー）
 
     if not game.game_clear and not game.game_over:
         # キー入力処理

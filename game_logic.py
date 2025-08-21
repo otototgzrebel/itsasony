@@ -196,15 +196,18 @@ class GameLogic:
                 appliance['explode_time'] = current_time
                 self.score += 100
                 self.sound_events.append('explosion')
-            
-            if appliance['exploded'] and current_time - appliance['explode_time'] > 5:
-                appliance['exploded'] = False
         
         self.check_explosion_damage()
         self.check_player_caught()
         
-        if all(a['exploded'] for a in self.appliances):
-            self.next_level()
+        # Check for level completion - all appliances must be exploded
+        if all(a['exploded'] for a in self.appliances) and not self.game_clear:
+            self.game_clear = True
+        
+        # Reset exploded appliances after game clear is processed
+        for appliance in self.appliances:
+            if appliance['exploded'] and current_time - appliance['explode_time'] > 5:
+                appliance['exploded'] = False
     
     def check_appliance_touch(self):
         for appliance in self.appliances:
