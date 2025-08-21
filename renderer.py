@@ -112,12 +112,30 @@ class Renderer:
             pygame.draw.circle(self.screen, BLACK, (x+18, y+18), 2)
     
     def render_game(self, game_logic):
-        # 画面クリア
-        self.screen.fill(WHITE)
+        # 画面全体を緑色で塗りつぶし
+        self.screen.fill((0, 128, 0))  # 緑色の背景
+        
+        # もこもこの草を画面全体に描画
+        grass_height = 40
+        screen_height = self.screen.get_height()
+        screen_width = self.screen.get_width()
+        
+        # 草の密度を上げるために間隔を狭く
+        for y in range(0, screen_height, 20):  # 縦方向にも草を配置
+            for x in range(-20, screen_width + 20, 8):  # 横方向の間隔をさらに狭く
+                # 草の高さをランダムに変化させて自然な見た目に
+                height_variation = y / screen_height * 0.5 + 0.5  # 下に行くほど高く
+                current_height = int(grass_height * height_variation)
+                
+                # 草の色を少しずつ変化させて立体感を出す
+                green_shade = max(0, min(255, 50 + y // 2))
+                pygame.draw.arc(self.screen, (0, green_shade, 0), 
+                              (x - 10, y - current_height//2, 30, current_height * 2), 
+                              3.14, 6.28, 2)
         
         # 壁描画
         for wall in game_logic.walls:
-            pygame.draw.rect(self.screen, BLACK, wall)
+            pygame.draw.rect(self.screen, (139, 69, 19), wall)  # 茶色の壁
         
         # 家電描画
         for appliance in game_logic.appliances:
