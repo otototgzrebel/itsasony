@@ -14,6 +14,35 @@ def create_footstep_sound():
     stereo_wave = np.column_stack((wave, wave))  # Duplicate for stereo
     return pygame.sndarray.make_sound((stereo_wave * 32767).astype(np.int16))
 
+def create_bark_sound():
+    # Short "wan"-like bark: two quick pulses with slight pitch down
+    duration = 0.18
+    sample_rate = 22050
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+    f0 = 700
+    f1 = 520
+    freqs = np.linspace(f0, f1, t.size)
+    envelope = np.exp(-t * 20)
+    wave = np.sin(2 * np.pi * freqs * t) * envelope
+    # Add second pulse after small gap
+    gap = int(0.06 * sample_rate)
+    second = np.sin(2 * np.pi * freqs * t) * np.exp(-t * 16)
+    buf = np.zeros(t.size + gap)
+    buf[:t.size] += wave
+    buf[gap:gap + t.size] += second * 0.8
+    stereo_wave = np.column_stack((buf, buf))
+    return pygame.sndarray.make_sound((stereo_wave * 32767).astype(np.int16))
+
+def create_bonus_sound():
+    duration = 0.4
+    sample_rate = 22050
+    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+    # Upward chirp for positive feedback
+    freqs = np.linspace(600, 1200, t.size)
+    wave = np.sin(2 * np.pi * freqs * t) * np.exp(-t * 2) * 0.4
+    stereo_wave = np.column_stack((wave, wave))
+    return pygame.sndarray.make_sound((stereo_wave * 32767).astype(np.int16))
+
 def create_timer_sound():
     duration = 0.5
     sample_rate = 22050
@@ -130,10 +159,19 @@ footstep_sound = create_footstep_sound()
 timer_sound = create_timer_sound()
 explosion_sound = create_explosion_sound()
 detection_sound = create_detection_sound()
+bonus_sound = create_bonus_sound()
 bgm_sound = create_bgm()
+dog_bark_sound = create_bark_sound()
 
 # BGM state (0: BGM on, 1: silent)
 bgm_state = 0
+
+# Auto-start BGM if state is ON at import
+if bgm_state == 0:
+    try:
+        bgm_sound.play(-1)
+    except Exception:
+        pass
 
 def toggle_bgm():
     """Toggle BGM on/off"""
@@ -154,3 +192,7 @@ def play_sound_effect(event):
         detection_sound.play()
     elif event == "footstep":
         footstep_sound.play()
+    elif event == "bonus":
+        bonus_sound.play()
+    elif event == "bark":
+        dog_bark_sound.play()

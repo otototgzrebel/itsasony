@@ -111,6 +111,56 @@ class Renderer:
             pygame.draw.circle(self.screen, BLACK, (x+12, y+18), 2)
             pygame.draw.circle(self.screen, BLACK, (x+18, y+18), 2)
     
+    def draw_aibo(self, aibo):
+        if not aibo or aibo.get('caught'):
+            return
+        x, y = aibo['x'], aibo['y']
+        # Silver dachshund (metallic look)
+        silver = (192, 192, 192)
+        dark_silver = (140, 140, 140)
+        highlight = (230, 230, 230)
+        outline = (70, 70, 70)
+
+        # Base body (long and low)
+        body_rect = (x-4, y+6, 34, 12)
+        pygame.draw.ellipse(self.screen, silver, body_rect)
+        # Shading on body
+        pygame.draw.ellipse(self.screen, dark_silver, (body_rect[0]+4, body_rect[1]+4, body_rect[2]-8, body_rect[3]-6))
+        # Highlight on body
+        pygame.draw.ellipse(self.screen, highlight, (body_rect[0]+6, body_rect[1]+2, body_rect[2]-20, 4))
+        # Outline
+        pygame.draw.ellipse(self.screen, outline, body_rect, 1)
+
+        # Head (with long snout)
+        head_center = (x+4, y+9)
+        pygame.draw.circle(self.screen, silver, head_center, 6)
+        pygame.draw.circle(self.screen, outline, head_center, 6, 1)
+        # Snout
+        pygame.draw.ellipse(self.screen, dark_silver, (x+6, y+9, 8, 4))
+        pygame.draw.ellipse(self.screen, outline, (x+6, y+9, 8, 4), 1)
+        # Nose
+        pygame.draw.circle(self.screen, outline, (x+14, y+11), 2)
+        # Eye
+        pygame.draw.circle(self.screen, (20, 20, 20), (x+2, y+8), 1)
+
+        # Floppy ear
+        pygame.draw.polygon(self.screen, dark_silver, [(x+1, y+5), (x+4, y+8), (x+0, y+10)])
+        pygame.draw.polygon(self.screen, outline, [(x+1, y+5), (x+4, y+8), (x+0, y+10)], 1)
+
+        # Short legs
+        leg_w, leg_h = 4, 4
+        for lx in (x+2, x+12, x+22, x+30):
+            pygame.draw.rect(self.screen, dark_silver, (lx, y+16, leg_w, leg_h))
+            pygame.draw.rect(self.screen, outline, (lx, y+16, leg_w, leg_h), 1)
+
+        # Thin tail
+        pygame.draw.line(self.screen, outline, (x+30, y+12), (x+36, y+8), 2)
+
+    def draw_puddle(self, puddle):
+        x, y = puddle['x'], puddle['y']
+        pee_color = (255, 215, 0)  # Gold
+        pygame.draw.ellipse(self.screen, pee_color, (x-8, y-4, 16, 8))
+    
     def render_game(self, game_logic):
         # 画面全体を緑色で塗りつぶし
         self.screen.fill((0, 128, 0))  # 緑色の背景
@@ -137,9 +187,20 @@ class Renderer:
         for wall in game_logic.walls:
             pygame.draw.rect(self.screen, (139, 69, 19), wall)  # 茶色の壁
         
+        # しみ（おしっこ）描画
+        for puddle in getattr(game_logic, 'puddles', []):
+            self.draw_puddle(puddle)
+
         # 家電描画
         for appliance in game_logic.appliances:
             self.draw_appliance(appliance)
+        
+        # アイボ描画（複数対応）
+        if hasattr(game_logic, 'aibos'):
+            for a in game_logic.aibos:
+                self.draw_aibo(a)
+        else:
+            self.draw_aibo(getattr(game_logic, 'aibo', None))
         
         # サービスマン描画
         for sm in game_logic.servicemen:

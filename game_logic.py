@@ -12,6 +12,7 @@ class GameLogic:
         self.walk_frame = 0
         self.walk_timer = 0
         self.is_moving = False
+        self.player_stun_until = 0.0
         
         self.game_clear = False
         self.game_over = False
@@ -26,6 +27,15 @@ class GameLogic:
         self.enemy_positions = self.generate_enemy_positions(self.walls)
         self.appliances = self.create_appliances()
         self.servicemen = self.create_servicemen()
+        # Level base speed snapshot
+        self.level_start_speed_multiplier = self.speed_multiplier
+        # Aibo: spawn conditions and state (support up to 4)
+        self.aibo_limit = 4
+        self.aibos = []  # list of aibo dicts
+        self.aibo_spawned_from_explosions = False
+        self.aibo_time_spawn_at = time.time() + random.uniform(20.0, 35.0)  # timed spawn window per level
+        self.total_exploded_count = 0
+        self.puddles = []  # list of {x,y,expire}
     
     def generate_maze(self):
         walls = [(0, 0, 800, 20), (0, 0, 20, 600), (780, 0, 20, 600), (0, 580, 800, 20)]
@@ -132,6 +142,25 @@ class GameLogic:
                 servicemen.append({'x': x, 'y': y, 'dx': dx, 'dy': dy, 'alive': True, 'chasing': False})
         return servicemen
     
+    def create_aibo(self, now):
+        # Spawn Aibo at a random valid position not colliding with walls
+        attempts = 0
+        while attempts < 200:
+            x = random.randint(40, 740)
+            y = random.randint(40, 540)
+            if not self.check_collision(x, y, 20):
+                # Avoid spawning too close to player
+                if math.hypot(x - self.player_x, y - self.player_y) > 100:
+                    dx, dy = random.choice([(1,0),(-1,0),(0,1),(0,-1)])
+                    return {'x': x, 'y': y, 'dx': dx, 'dy': dy, 'speed': 2, 'caught': False, 'wander_timer': 0,
+                            'peeing': False, 'pee_end': 0.0, 'despawn_time': now + 12.0,
+                            'next_pee_time': now + random.uniform(4.0, 6.0)}
+            attempts += 1
+        # Fallback
+        return {'x': 400, 'y': 300, 'dx': 1, 'dy': 0, 'speed': 2, 'caught': False, 'wander_timer': 0,
+                'peeing': False, 'pee_end': 0.0, 'despawn_time': now + 12.0,
+                'next_pee_time': now + random.uniform(4.0, 6.0)}
+    
     def spawn_new_enemy(self):
         # 新しい敵を既存のポジションから選んで生成
         if self.enemy_positions:
@@ -147,6 +176,12 @@ class GameLogic:
         return False
     
     def update_player(self, keys):
+        now = time.time()
+        # Stunned by puddle: cannot move
+        if now < self.player_stun_until:
+            self.is_moving = False
+            self.walk_frame = 0
+            return False
         new_x, new_y = self.player_x, self.player_y
         self.is_moving = False
         
@@ -171,6 +206,14 @@ class GameLogic:
             self.player_x = new_x
         if not self.check_collision(self.player_x, new_y, self.player_size):
             self.player_y = new_y
+
+        # Check stepping on puddles -> stun for 0.1 second
+        for p in getattr(self, 'puddles', []):
+            if (self.player_x < p['x'] + 8 and self.player_x + self.player_size > p['x'] - 8 and
+                self.player_y < p['y'] + 4 and self.player_y + self.player_size > p['y'] - 4):
+                if now >= self.player_stun_until:
+                    self.player_stun_until = now + 0.1
+                break
         
         if self.is_moving:
             self.walk_timer += 1
@@ -189,6 +232,8 @@ class GameLogic:
         self.check_appliance_touch()
         self.move_servicemen()
         self.check_serviceman_appliance()
+        self.move_aibos(current_time)
+        self.check_aibo_catch()
         
         for appliance in self.appliances:
             if appliance['timer'] > 0 and current_time - appliance['timer'] > 3 and not appliance['exploded']:
@@ -196,6 +241,21 @@ class GameLogic:
                 appliance['explode_time'] = current_time
                 self.score += 100
                 self.sound_events.append('explosion')
+                self.total_exploded_count += 1
+                if self.total_exploded_count == 2 and not self.aibo_spawned_from_explosions:
+                    if len(self.aibos) < self.aibo_limit:
+                        self.aibos.append(self.create_aibo(current_time))
+                        # Bark on spawn
+                        self.sound_events.append('bark')
+                    self.aibo_spawned_from_explosions = True
+
+        # Timed Aibo spawn (alternative to explosions) - may spawn multiple up to limit
+        if (len(self.aibos) < self.aibo_limit) and (current_time >= self.aibo_time_spawn_at):
+            self.aibos.append(self.create_aibo(current_time))
+            # Schedule next timed spawn window
+            self.aibo_time_spawn_at = current_time + random.uniform(20.0, 35.0)
+            # Bark on timed spawn
+            self.sound_events.append('bark')
         
         self.check_explosion_damage()
         self.check_player_caught()
@@ -204,10 +264,6 @@ class GameLogic:
         if all(a['exploded'] for a in self.appliances) and not self.game_clear:
             self.game_clear = True
         
-        # Reset exploded appliances after game clear is processed
-        for appliance in self.appliances:
-            if appliance['exploded'] and current_time - appliance['explode_time'] > 5:
-                appliance['exploded'] = False
     
     def check_appliance_touch(self):
         for appliance in self.appliances:
@@ -287,6 +343,54 @@ class GameLogic:
             else:
                 sm['y'] = new_y
     
+    def move_aibos(self, now):
+        # Despawn expired puddles
+        self.puddles = [p for p in self.puddles if p['expire'] > now]
+        if not self.aibos:
+            return
+        next_aibos = []
+        for a in self.aibos:
+            if a.get('caught') or now > a.get('despawn_time', now):
+                continue  # remove caught/expired
+            # Peeing logic
+            if a['peeing']:
+                if now >= a['pee_end']:
+                    a['peeing'] = False
+                else:
+                    next_aibos.append(a)
+                    continue  # stay still while peeing
+            else:
+                # Start peeing roughly every ~5s with randomness
+                if now >= a.get('next_pee_time', now + 5.0):
+                    a['peeing'] = True
+                    a['pee_end'] = now + 1.5
+                    # Schedule next pee time
+                    a['next_pee_time'] = now + random.uniform(4.0, 6.0)
+                    self.puddles.append({'x': a['x']+10, 'y': a['y']+16, 'expire': now + 8.0})
+                    # Bark when starting to pee
+                    self.sound_events.append('bark')
+                    next_aibos.append(a)
+                    continue
+            # Randomly change direction
+            a['wander_timer'] += 1
+            if a['wander_timer'] > 30 and random.random() < 0.2:
+                a['dx'], a['dy'] = random.choice([(1,0),(-1,0),(0,1),(0,-1)])
+                a['wander_timer'] = 0
+            speed = a['speed']
+            new_x = a['x'] + a['dx'] * speed
+            new_y = a['y'] + a['dy'] * speed
+            # Bounce on walls/bounds
+            if self.check_collision(new_x, a['y'], 20) or new_x < 20 or new_x > 760:
+                a['dx'] *= -1
+            else:
+                a['x'] = new_x
+            if self.check_collision(a['x'], new_y, 20) or new_y < 20 or new_y > 560:
+                a['dy'] *= -1
+            else:
+                a['y'] = new_y
+            next_aibos.append(a)
+        self.aibos = next_aibos
+    
     def check_serviceman_appliance(self):
         for sm in self.servicemen:
             if not sm['alive']:
@@ -316,6 +420,24 @@ class GameLogic:
                 self.player_y < sm['y'] + 30 and self.player_y + self.player_size > sm['y']):
                 self.game_over = True
     
+    def check_aibo_catch(self):
+        if not self.aibos:
+            return
+        for a in self.aibos:
+            if a.get('caught'):
+                continue
+            ax, ay = a['x'], a['y']
+            if (self.player_x < ax + 20 and self.player_x + self.player_size > ax and
+                self.player_y < ay + 20 and self.player_y + self.player_size > ay):
+                # Caught Aibo
+                a['caught'] = True
+                self.score += 500
+                # Reset servicemen speed to level start
+                self.speed_multiplier = self.level_start_speed_multiplier
+                # Play bonus and bark
+                self.sound_events.append('bonus')
+                self.sound_events.append('bark')
+    
     def next_level(self):
         self.level += 1
         self.score += 1000
@@ -329,13 +451,20 @@ class GameLogic:
         self.walk_timer = 0
         self.is_moving = False
         self.game_clear = False
+        self.player_stun_until = 0.0
         
         self.walls = self.generate_maze()
         self.appliance_positions = self.generate_appliance_positions(self.walls)
         self.enemy_positions = self.generate_enemy_positions(self.walls)
         self.appliances = self.create_appliances()
         self.servicemen = self.create_servicemen()
-    
+        self.level_start_speed_multiplier = self.speed_multiplier
+        self.aibos = []
+        self.aibo_spawned_from_explosions = False
+        self.aibo_time_spawn_at = time.time() + random.uniform(20.0, 35.0)
+        self.total_exploded_count = 0
+        self.puddles = []
+
     def restart(self):
         self.player_x, self.player_y = 50, 50
         self.player_direction = 'down'
@@ -352,3 +481,10 @@ class GameLogic:
         self.enemy_positions = self.generate_enemy_positions(self.walls)
         self.appliances = self.create_appliances()
         self.servicemen = self.create_servicemen()
+        self.level_start_speed_multiplier = self.speed_multiplier
+        self.player_stun_until = 0.0
+        self.aibos = []
+        self.aibo_spawned_from_explosions = False
+        self.aibo_time_spawn_at = time.time() + random.uniform(20.0, 35.0)
+        self.total_exploded_count = 0
+        self.puddles = []
